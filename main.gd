@@ -19,6 +19,7 @@ var loading := false
 var vel := 0.0
 var start_pos := 0.0
 var t := 0.0
+var dbg := ""
 
 
 func _ready() -> void:
@@ -123,6 +124,7 @@ func _setup_ui() -> void:
 func _pick() -> void:
 	if loading:
 		return
+	status.text = "Opening file picker..."
 	var err := DisplayServer.file_dialog_show(
 		"Select photos", "", "", false,
 		DisplayServer.FILE_DIALOG_MODE_OPEN_FILES,
@@ -134,7 +136,10 @@ func _pick() -> void:
 
 func _on_files_selected(ok: bool, paths: PackedStringArray, _filter_index: int) -> void:
 	if ok and paths.size() > 0:
+		status.text = "Picked %d file(s)\n%s" % [paths.size(), paths[0]]
 		_load_photos.call_deferred(paths)
+	else:
+		status.text = "Picker returned nothing (ok=%s, count=%d)" % [str(ok), paths.size()]
 
 
 func _load_photos(paths: PackedStringArray) -> void:
@@ -163,7 +168,7 @@ func _load_photos(paths: PackedStringArray) -> void:
 	loading = false
 	pick_btn.disabled = false
 	if photos.is_empty():
-		status.text = "Could not read the photos.\n" + last_error
+		status.text = "Could not read the photos.\n" + dbg
 		return
 
 	hint.visible = false
@@ -181,8 +186,14 @@ func _load_photos(paths: PackedStringArray) -> void:
 
 # ------------------------------------------------------------ image load ----
 func _load_image(path: String) -> Image:
-	var bytes := FileAccess.get_file_as_bytes(path)
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		dbg = "open failed: %s\n%s" % [error_string(FileAccess.get_open_error()), path]
+		return null
+	var bytes := f.get_buffer(f.get_length())
+	f.close()
 	if bytes.is_empty():
+		dbg = "file is empty\n" + path
 		return null
 	var img := Image.new()
 	var err := img.load_jpg_from_buffer(bytes)
@@ -191,6 +202,7 @@ func _load_image(path: String) -> Image:
 	if err != OK:
 		err = img.load_webp_from_buffer(bytes)
 	if err != OK:
+		dbg = "decode failed, bytes=%d\n%s" % [bytes.size(), path]
 		return null
 
 	var longest := maxi(img.get_width(), img.get_height())
