@@ -1,1 +1,49 @@
+name: Build Android APK
 
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+env:
+  GODOT_VERSION: 4.4.1
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:4.4.1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare Godot (templates + editor settings)
+        run: |
+          mkdir -p ~/.local/share/godot/export_templates ~/.config/godot
+          mv /root/.local/share/godot/export_templates/${GODOT_VERSION}.stable ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+          cp -r /root/.config/godot/. ~/.config/godot/ || true
+
+      - name: Create signing keystore
+        run: |
+          keytool -genkeypair -v -keystore $HOME/yam.keystore -alias yam \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass yampicture123 -keypass yampicture123 \
+            -dname "CN=YAM Picture, O=YAM Picture, C=ET"
+          echo "GODOT_ANDROID_KEYSTORE_RELEASE_PATH=$HOME/yam.keystore" >> $GITHUB_ENV
+          echo "GODOT_ANDROID_KEYSTORE_RELEASE_USER=yam" >> $GITHUB_ENV
+          echo "GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD=yampicture123" >> $GITHUB_ENV
+
+      - name: Import project
+        run: godot --headless --verbose --import || true
+
+      - name: Export APK
+        run: |
+          mkdir -p build
+          godot --headless --verbose --export-release "Android" build/YAM-Album.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: YAM-Album-APK
+          path: build/YAM-Album.apk
